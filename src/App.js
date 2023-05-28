@@ -30,9 +30,9 @@ function App() {
   return (
       <Fragment>
         <Dialog open={open}>
-          <DialogTitle>Submit</DialogTitle>
+          <DialogTitle sx={{fontSize: 70}}>컴퓨터 네트워크 10조 채팅방</DialogTitle>
           <DialogContent>
-            <DialogContentText>
+            <DialogContentText align="center" sx={{fontSize: 30}}>
               채팅방을 이용하려면 이름을 입력해 주세요
             </DialogContentText>
             <TextField
@@ -41,7 +41,7 @@ function App() {
                 id="name"
                 label="Name"
                 fullWidth
-                variant="standard"
+                variant="outlined"
                 onChange={handleKeyPress}
             />
           </DialogContent>
@@ -49,7 +49,7 @@ function App() {
             <Button onClick={handleClose}>Submit</Button>
           </DialogActions>
         </Dialog>
-        {!open && <Chat name={userName}/>}
+        {!open && <Chat name={userName} handleOpen={handleClickOpen}/>}
       </Fragment>
   )
 }

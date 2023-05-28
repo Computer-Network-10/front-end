@@ -8,6 +8,12 @@ body {
 }
 
 code {
+    font-family: 'Patrick Hand', cursive;
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+
+code {
+  font-family: 'Nanum Pen Script', cursive;
+}
+
