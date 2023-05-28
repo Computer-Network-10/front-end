@@ -9,7 +9,8 @@ import ChatLog from "./ChatLog";
 import * as StompJS from '@stomp/stompjs';
 import * as SockJS from 'sockjs-client';
 
-const BASE_URL = "ws://3.35.13.27:8080/ws";
+const API_URL = process.env.REACT_APP_API_URL;
+const BASE_URL = process.env.REACT_APP_BASE_URL;
 
 let client;
 let subscription;
@@ -18,62 +19,87 @@ export function mySocketFactory() {
     return new SockJS(BASE_URL);
 }
 
-export const callback = (message) => {
-    console.log("call back!!");
-    console.log(message);
+function currentDate() {
+    const date = new Date();
+    const hour = (date.getHours() < 10) ? "0" + date.getHours().toString() : date.getHours();
+    const minute = (date.getMinutes() < 10) ? "0" + date.getMinutes().toString() : date.getMinutes();
+
+    return `${hour}:${minute}`;
 }
 
 function Chat(props) {
     const userName = props.name;
+    const handleOpen = props.handleOpen;
     const [message, setMessage] = useState("");
     const [chatLog, setChatLog] = useState([
         {
-            name: userName,
-            time: "09:30",
-            text: "Hey, What's up ?"
-        },
-        {
-            name: "Alice",
-            time: "09:31",
-            text: "Hey, Iam Good! What about you ?"
-        },
-        {
-            name: userName,
-            time: "09:32",
-            text: "Cool. i am good, let's catch up!"
+            type: 0,
+            sender: userName,
+            time: currentDate(),
+            chat: `'${userName}'님이 입장하셨습니다!`
         }
     ]);
 
-    const partiList = ["Remy Sharp", "Alice"];
+    const [partyList, setPartyList] = useState(null);
+
+    // 서버에게 파티방 나감을 알리는 API
+    const exitFunction = async () => {
+        try{
+            const response = await fetch(`${API_URL}/api/chat/${userName}`, {
+                method: "DELETE",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                credentials: "include"
+            })
+            const data = await response.text();
+            console.log(data);
+        } catch (e) {
+            console.log("Error : ", e);
+        } finally {
+            handleOpen();
+        }
+    }
+
+    // 구독한 채널로부터 메세지가 왔을 때 호출되는 callback 함수
+    const callback = (message) => {
+        const data = JSON.parse(message.body);
+
+        // 참가자 참여한 경우
+        if (data.type === 0) {
+            // 참가자 리스트에 추가
+            setPartyList(prevState => [...prevState, data.sender]);
+        }
+        // 참가자가 나간 경우
+        else if (data.type === -1) {
+            // 참가자 리스트에서 삭제
+            setPartyList(prevState => prevState.filter(item => item !== data.sender));
+        }
+
+        setChatLog(prevState => [...prevState, {
+            sender: data.sender, time: data.time,
+            chat: data.chat, type: data.type
+        }]);
+    }
 
     // 메세지 전송 시 호출되는 함수
     const handleSendMessage = (e) => {
-        const data = {
-            sender : 1,
-            channelId : 1,
-            chat : "내일 학교 가기 싫어"
-        }
         e.preventDefault();
 
-        // client.publish({
-        //     destination: '/pub/chat',
-        //     body: JSON.stringify(data),
-        //     headers: {}
-        // });
-        //
-        // console.log("published");
-        //
-        // subscription = client.subscribe('/sub/chat/1', callback, {});
+        if (message.length > 0) {
+            const publishData = {
+                sender: userName,
+                channelId: 1,
+                chat: message
+            }
 
-        if(message.length > 0) {
-            const date = new Date();
-            const hour = (date.getHours() < 10) ? "0" + date.getHours().toString() : date.getHours();
-            const minute = (date.getMinutes() < 10) ? "0" + date.getMinutes().toString() : date.getMinutes();
-            setChatLog([...chatLog,
-                {
-                    name: userName, time: `${hour}:${minute}`,
-                    text: message
-                }]);
+            // 메세지 publish하기
+            client.publish({
+                destination: '/pub/chat',
+                body: JSON.stringify(publishData),
+                headers: {}
+            });
+
             setMessage("");
         }
     };
@@ -83,90 +109,126 @@ function Chat(props) {
         setMessage(e.target.value);
     };
 
+    const handleExit = () => {
+        exitFunction();
+    }
+
     useEffect(() => {
-        client = new StompJS.Client({
-            brokerURL: BASE_URL,
-            connectHeaders: {},
-            debug: function (str) {
-                console.log(str);
+        // 서버에게 파티방 생성을 요청하는 API를 POST합니다.
+        fetch(`${API_URL}/api/chat/member`, {
+            headers: {
+                "Content-Type": "application/json",
             },
-            heartbeatIncoming: 4000,
-            heartbeatOutgoing: 4000,
-        });
+            credentials: "include"
+        })
+            .then((respones) => {
+                return respones.json();
+            })
+            .then((data) => {
+                console.log("Respones Data : ", data);
 
-        // Fallback code
-        if (typeof WebSocket !== 'function') {
-            // For SockJS you need to set a factory that creates a new SockJS instance
-            // to be used for each (re)connect
-            client.webSocketFactory = mySocketFactory();
-        }
+                // 참가자 리스트 초기화
+                const partyList = [];
+                for(let i = 0; i < data.length; i++){
+                    partyList.push(data[i].nickname);
+                }
+                setPartyList(partyList);
 
-        // Fallback code
-        if (typeof WebSocket !== 'function') {
-            // For SockJS you need to set a factory that creates a new SockJS instance
-            // to be used for each (re)connect
-            client.webSocketFactory = function () {
-                // Note that the URL is different from the WebSocket URL
-                return new SockJS('http://localhost:15674/stomp');
-            };
-        }
+                client = new StompJS.Client({
+                    brokerURL: BASE_URL,
+                    connectHeaders: {
+                        sender: userName,
+                        channelId: 1
+                    },
+                    debug: function (str) {
+                        console.log(str);
+                    },
+                    heartbeatIncoming: 4000,
+                    heartbeatOutgoing: 4000,
+                });
 
-        client.onConnect = function (frame) {
-            console.log(frame);
-            // Do something, all subscribes must be done is this callback
-            // This is needed because this will be executed after a (re)connect
-        };
+                // Fallback code
+                if (typeof WebSocket !== 'function') {
+                    // For SockJS you need to set a factory that creates a new SockJS instance
+                    // to be used for each (re)connect
+                    client.webSocketFactory = mySocketFactory();
+                }
 
-        client.onStompError = function (frame) {
-            // Will be invoked in case of error encountered at Broker
-            // Bad login/passcode typically will cause an error
-            // Complaint brokers will set `message` header with a brief message. Body may contain details.
-            // Compliant brokers will terminate the connection after any error
-            console.log('Broker reported error: ' + frame.headers['message']);
-            console.log('Additional details: ' + frame.body);
-        };
+                // Fallback code
+                if (typeof WebSocket !== 'function') {
+                    // For SockJS you need to set a factory that creates a new SockJS instance
+                    // to be used for each (re)connect
+                    client.webSocketFactory = function () {
+                        // Note that the URL is different from the WebSocket URL
+                        return new SockJS('http://localhost:15674/stomp');
+                    };
+                }
 
-        client.activate();
+                client.onConnect = function (frame) {
+                    console.log(frame);
+                    // Do something, all subscribes must be done is this callback
+                    // This is needed because this will be executed after a (re)connect
+                    subscription = client.subscribe(`/sub/chat/1`, callback, {});
+                    console.log("subscribed!");
+                };
+
+                client.onStompError = function (frame) {
+                    // Will be invoked in case of error encountered at Broker
+                    // Bad login/passcode typically will cause an error
+                    // Complaint brokers will set `message` header with a brief message. Body may contain details.
+                    // Compliant brokers will terminate the connection after any error
+                    console.log('Broker reported error: ' + frame.headers['message']);
+                    console.log('Additional details: ' + frame.body);
+                };
+
+                client.activate();
+            })
+            .catch((error) => {
+                console.log(`${error.name} : ${error.message}`);
+            });
 
         return () => {
-            client.deactivate();
+            if(client){
+                client.deactivate();
+                client = null;
+                subscription = null;
+                exitFunction();
+            }
         }
     }, []);
 
     return (
         <Fragment>
-            <Grid container sx={{width: "100%", height: "100vh"}}>
-                <Grid item xs={3} sx={{border: "3px solid"}}>
+            <Grid container sx={{width: "100%", height: "80vh"}}>
+                <Grid item xs={2.7} sx={{border: "3px solid", bgcolor: "#e0f7fa"}}>
                     <List>
                         <ListItemText primary="😁 Me" sx={{px: 1.5, color: "blue"}}/>
                         <ListItem key="userName">
                             <LetterAvatar name={userName}/>
                             <ListItemText primary={userName} sx={{px: 1.5}}/>
+                            <Button variant="outlined" size="small" color="error" onClick={handleExit}
+                            sx={{fontSize: 20}}>
+                                파티방 나가기~
+                            </Button>
                         </ListItem>
                     </List>
                     <Divider sx={{border: 2}}/>
-                    <ParticipantList list={partiList}/>
+                    <ParticipantList list={partyList}/>
                 </Grid>
-                <Grid item xs={9} sx={{border: "3px solid"}}>
+                <Grid item xs={9.3} sx={{border: "3px solid", bgcolor: "#e1f5fe"}}>
                     <ChatLog list={chatLog} name={userName}/>
                     <Divider sx={{border: 2}}/>
-                    <Box component="form">
-                        <Grid container style={{padding: '20px'}}>
-                            <Grid item xs={10}>
-                                <TextField
-                                    fullWidth
-                                    label="Message"
-                                    value={message}
-                                    onChange={handleKeyPress}
-                                />
-                            </Grid>
-                            <Grid item xs={2}>
-                                <Button type="submit" variant="contained" color="primary" sx={{mx: 5}}
-                                        onClick={handleSendMessage}>
-                                    Send
-                                </Button>
-                            </Grid>
-                        </Grid>
+                    <Box component="form" sx={{display: "flex", alignItem: "row", margin: "auto", padding: 3}}>
+                        <TextField
+                            fullWidth
+                            label="Message"
+                            value={message}
+                            onChange={handleKeyPress}
+                        />
+                        <Button type="submit" variant="contained" color="primary" sx={{ml: 2}}
+                                onClick={handleSendMessage}>
+                            Send
+                        </Button>
                     </Box>
                 </Grid>
             </Grid>

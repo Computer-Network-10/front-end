@@ -7,7 +7,7 @@ function ParticipantList(props) {
     return (
         <List>
             <ListItemText primary="😃 Participant List" sx={{px: 1.5, color: "blue"}} />
-            {participantList.map((item, index) => {
+            { participantList && participantList.map((item, index) => {
                 return (
                     <ListItem key={index}>
                         <LetterAvatar name={item} />
