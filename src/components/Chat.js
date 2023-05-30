@@ -1,19 +1,28 @@
 import {
     Divider, Grid, List, ListItem,
-    ListItemText, TextField, Button, Box
+    ListItemText, TextField, Button, Box, Slide
 } from "@mui/material";
-import {Fragment, useEffect, useState} from "react";
+import React, {Fragment, useEffect, useState} from "react";
 import LetterAvatar from "./LetterAvatar";
 import ParticipantList from "./ParticipantList";
 import ChatLog from "./ChatLog";
 import * as StompJS from '@stomp/stompjs';
 import * as SockJS from 'sockjs-client';
+import DialogActions from "@mui/material/DialogActions";
+import DialogContent from "@mui/material/DialogContent";
+import DialogTitle from "@mui/material/DialogTitle";
+import Dialog from "@mui/material/Dialog";
 
 const API_URL = process.env.REACT_APP_API_URL;
 const BASE_URL = process.env.REACT_APP_BASE_URL;
 
 let client;
 let subscription;
+
+// Dialog가 아래에서 위로 올라가는 느낌을 주기위해 선언한 변수
+const Transition = React.forwardRef(function Transition(props, ref) {
+    return <Slide direction="up" ref={ref} {...props} />;
+});
 
 export function mySocketFactory() {
     return new SockJS(BASE_URL);
@@ -41,6 +50,21 @@ function Chat(props) {
     ]);
 
     const [partyList, setPartyList] = useState(null);
+
+    // 다이로그 open 변수
+    const [open, setOpen] = useState(true);
+
+    const [frontNum, setFrontNum] = useState("");
+    const [endNum, setEndNum] = useState("");
+
+    const handleInput = (e) => {
+        if(e.target.id === "front"){
+            setFrontNum(e.target.value);
+        }
+        else{
+            setEndNum(e.target.value);
+        }
+    }
 
     // 서버에게 파티방 나감을 알리는 API
     const exitFunction = async () => {
@@ -113,6 +137,30 @@ function Chat(props) {
         exitFunction();
     }
 
+    // 개인 정보를 보내는 함수
+    const sendRegistrationNum = () => {
+        const data = {info : `${frontNum}-${endNum}`};
+        console.log("data : ", data);
+        fetch(`${API_URL}/api/private`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            credentials: "include",
+            body: JSON.stringify(data),
+        })
+            .then((respones) => {
+                return respones.json();
+            })
+            .then((data) => {
+                console.log("Respond Private Data : ", data);
+            })
+            .catch((error) => {
+                console.log(error);
+            });
+        setOpen(false);
+    }
+
     useEffect(() => {
         // 서버에게 파티방 생성을 요청하는 API를 POST합니다.
         fetch(`${API_URL}/api/chat/member`, {
@@ -125,7 +173,7 @@ function Chat(props) {
                 return respones.json();
             })
             .then((data) => {
-                console.log("Respones Data : ", data);
+                console.log("Respond Data : ", data);
 
                 // 참가자 리스트 초기화
                 const partyList = [];
@@ -232,6 +280,32 @@ function Chat(props) {
                     </Box>
                 </Grid>
             </Grid>
+            <Dialog open={open}
+                    TransitionComponent={Transition}
+                    keepMounted
+                    fullWidth={true}
+                    maxWidth="sm">
+                <DialogTitle>개인 정보 입력</DialogTitle>
+                <DialogContent sx={{mx: 1, p:0}}>
+                    <Box
+                        component="form"
+                        sx={{
+                            '& > :not(style)': { m: 1, width: '25ch' },
+                        }}
+                        noValidate
+                        autoComplete="off">
+                        <TextField id="front" size="small" label="앞자리" variant="outlined"
+                                   value={frontNum}
+                                   onChange={handleInput}/>
+                        <TextField id="end" size="small" label="뒷자리" type="password" variant="outlined"
+                                   value={endNum}
+                                   onChange={handleInput}/>
+                    </Box>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={sendRegistrationNum}>submit</Button>
+                </DialogActions>
+            </Dialog>
         </Fragment>
     );
 }

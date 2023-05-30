@@ -18,12 +18,11 @@ function App() {
   };
 
   const handleClose = (e) => {
-    console.log(userName);
+    console.log("로그인 성공!, 유저이름 : ", userName);
     setOpen(false);
   };
 
   const handleKeyPress = (e) => {
-    console.log("key press : ", e);
     setUserName(e.target.value);
   }
 
