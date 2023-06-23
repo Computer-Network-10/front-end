@@ -15,6 +15,7 @@ import Dialog from "@mui/material/Dialog";
 
 const API_URL = process.env.REACT_APP_API_URL;
 const BASE_URL = process.env.REACT_APP_BASE_URL;
+const BASE_CHANNEL_ID = 1;
 
 let client;
 let subscription;
@@ -28,6 +29,7 @@ export function mySocketFactory() {
     return new SockJS(BASE_URL);
 }
 
+// Date 객체에서 시간, 분을 골라내는 함수
 function currentDate() {
     const date = new Date();
     const hour = (date.getHours() < 10) ? "0" + date.getHours().toString() : date.getHours();
@@ -57,6 +59,7 @@ function Chat(props) {
     const [frontNum, setFrontNum] = useState("");
     const [endNum, setEndNum] = useState("");
 
+    // 개인 정보
     const handleInput = (e) => {
         if(e.target.id === "front"){
             setFrontNum(e.target.value);
@@ -66,7 +69,7 @@ function Chat(props) {
         }
     }
 
-    // 서버에게 파티방 나감을 알리는 API
+    // 서버에게 사용자가 채팅방에서 나갔음을 알리는 API 호출
     const exitFunction = async () => {
         try{
             const response = await fetch(`${API_URL}/api/chat/${userName}`, {
@@ -106,14 +109,14 @@ function Chat(props) {
         }]);
     }
 
-    // 메세지 전송 시 호출되는 함수
+    // 메세지 전송 버튼 클릭시 호출되는 함수
     const handleSendMessage = (e) => {
         e.preventDefault();
 
         if (message.length > 0) {
             const publishData = {
                 sender: userName,
-                channelId: 1,
+                channelId: BASE_CHANNEL_ID,
                 chat: message
             }
 
@@ -128,19 +131,19 @@ function Chat(props) {
         }
     };
 
-    // 메세지 입력 시 호출 되는 함수
+    // 메세지 입력될 때마다 호출 되는 함수
     const handleKeyPress = (e) => {
         setMessage(e.target.value);
     };
 
+    // 채팅방에서 나가기 버튼을 클릭시 호출되는 함수
     const handleExit = () => {
         exitFunction();
     }
 
-    // 개인 정보를 보내는 함수
+    // 개인 정보를 서버에게 보내는 함수
     const sendRegistrationNum = () => {
         const data = {info : `${frontNum}-${endNum}`};
-        console.log("data : ", data);
         fetch(`${API_URL}/api/private`, {
             method: "POST",
             headers: {
@@ -162,7 +165,7 @@ function Chat(props) {
     }
 
     useEffect(() => {
-        // 서버에게 파티방 생성을 요청하는 API를 POST합니다.
+        // 서버에게 채팅방에 참여하고 있는 참가자 리스트 요청하는 GET Method
         fetch(`${API_URL}/api/chat/member`, {
             headers: {
                 "Content-Type": "application/json",
@@ -182,11 +185,12 @@ function Chat(props) {
                 }
                 setPartyList(partyList);
 
+                // Respond가 오면 웹 서버에 Connect하기
                 client = new StompJS.Client({
                     brokerURL: BASE_URL,
                     connectHeaders: {
                         sender: userName,
-                        channelId: 1
+                        channelId: BASE_CHANNEL_ID,
                     },
                     debug: function (str) {
                         console.log(str);
@@ -212,19 +216,13 @@ function Chat(props) {
                     };
                 }
 
+                // Connection이 이루어지고 Callback 함수
                 client.onConnect = function (frame) {
-                    console.log(frame);
-                    // Do something, all subscribes must be done is this callback
-                    // This is needed because this will be executed after a (re)connect
-                    subscription = client.subscribe(`/sub/chat/1`, callback, {});
+                    subscription = client.subscribe(`/sub/chat/${BASE_CHANNEL_ID}`, callback, {});
                     console.log("subscribed!");
                 };
 
                 client.onStompError = function (frame) {
-                    // Will be invoked in case of error encountered at Broker
-                    // Bad login/passcode typically will cause an error
-                    // Complaint brokers will set `message` header with a brief message. Body may contain details.
-                    // Compliant brokers will terminate the connection after any error
                     console.log('Broker reported error: ' + frame.headers['message']);
                     console.log('Additional details: ' + frame.body);
                 };
@@ -237,7 +235,7 @@ function Chat(props) {
 
         return () => {
             if(client){
-                client.deactivate();
+                client.deactivate(); // 웹 서버와의 Connection close하기
                 client = null;
                 subscription = null;
                 exitFunction();
